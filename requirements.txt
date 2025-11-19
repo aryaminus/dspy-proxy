@@ -1,0 +1,5 @@
+dspy-ai
+fastapi
+uvicorn
+pydantic
+python-dotenv

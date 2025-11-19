@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: dspy-proxy
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    plan: free
+    autoDeploy: false
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
