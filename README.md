@@ -2,6 +2,8 @@
 
 A proxy server for [DSPy](https://github.com/stanfordnlp/dspy) that allows you to register signatures, execute modules, and run optimization procedures via a REST API. This enables using DSPy from languages other than Python.
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/aryaminus/dspy-proxy)
+
 ## Features
 
 - **Register Signatures**: Define input/output signatures dynamically.
@@ -30,7 +32,11 @@ The server runs on `http://0.0.0.0:8000`.
 
 ## Deployment
 
-### Render
+### Option 1: One-Click Deploy
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/aryaminus/dspy-proxy)
+
+### Option 2: Manual Deployment
 
 This project is configured for deployment on [Render](https://render.com).
 
