@@ -3,7 +3,7 @@ import json
 import time
 import argparse
 
-def test_all(base_url, model, api_key):
+def test_all(base_url, model, api_key, provider):
     print(f"Testing against {base_url}")
     
     # 1. Configure (Test OpenAI config)
@@ -11,14 +11,14 @@ def test_all(base_url, model, api_key):
     try:
         # Increased timeout for cold starts on free tier
         res = requests.post(f"{base_url}/configure", json={
-            "provider": "openai",
+            "provider": provider,
             "model": model,
             "api_key": api_key
         }, timeout=60) 
     except requests.exceptions.Timeout:
         print("Request timed out. The server might be waking up (cold start). Retrying...")
         res = requests.post(f"{base_url}/configure", json={
-            "provider": "openai",
+            "provider": provider,
             "model": model,
             "api_key": api_key
         }, timeout=60)
@@ -101,6 +101,7 @@ if __name__ == "__main__":
     parser.add_argument("--url", type=str, default="http://localhost:8000", help="Base URL of the server")
     parser.add_argument("--model", type=str, default="gpt-4o-mini", help="Model to use")
     parser.add_argument("--api-key", type=str, required=True, help="API Key")
+    parser.add_argument("--provider", type=str, default="openai", help="Provider to use")
     args = parser.parse_args()
     
-    test_all(args.url, args.model, args.api_key)
+    test_all(args.url, args.model, args.api_key, args.provider)
