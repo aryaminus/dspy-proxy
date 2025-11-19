@@ -1,6 +1,6 @@
 # DSPy Proxy Server
 
-A proxy server for [DSPy](https://github.com/stanfordnlp/dspy) that allows you to register signatures, execute modules, and run optimization procedures via a REST API. This enables using DSPy from languages other than Python.
+A proxy server for [DSPy](https://github.com/stanfordnlp/dspy) that allows you to register signatures, execute modules, and run optimization procedures via a REST API. This enables using DSPy from languages other than Python. Idea seed from [tweet](https://x.com/skylar_b_payne/status/1990808733140779488)!
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/aryaminus/dspy-proxy)
 
