@@ -32,15 +32,33 @@ class ConfigureRequest(BaseModel):
 class PredictRequest(BaseModel):
     signature_name: str
     inputs: Dict[str, Any]
-    module_type: str = "Predict"  # Predict, ChainOfThought, ReAct, etc.
+    module_type: str = "Predict"  # Predict, ChainOfThought, ProgramOfThought, etc.
     compiled_module_id: Optional[str] = None # If using a previously optimized module
 
 class OptimizeRequest(BaseModel):
     signature_name: str
     train_data: List[Dict[str, Any]] # List of input/output pairs
     metric: str = "exact_match" # exact_match, etc.
-    optimizer: str = "BootstrapFewShot"
+    optimizer: str = "BootstrapFewShot" # BootstrapFewShot, MIPROv2, COPRO
     max_bootstraps: int = 4
+    # Additional optimizer params
+    num_candidates: int = 7 # For COPRO
+    init_temperature: float = 1.4 # For COPRO
+    num_threads: int = 1 # For COPRO/MIPROv2
+    minibatch: bool = False # For MIPROv2
+    minibatch_size: int = 16 # For MIPROv2
+    minibatch_full_eval_steps: int = 10 # For MIPROv2
+    prompt_model: Optional[str] = None # For MIPROv2/COPRO (if different from task model)
+    prompt_model_provider: Optional[str] = None # For MIPROv2/COPRO
+
+class EvaluateRequest(BaseModel):
+    signature_name: str
+    test_data: List[Dict[str, Any]]
+    metric: str = "exact_match"
+    compiled_module_id: Optional[str] = None
+    module_type: str = "Predict"
+    num_threads: int = 1
+    display_progress: bool = False
 
 @app.post("/configure")
 def configure_lm(req: ConfigureRequest):
@@ -117,6 +135,8 @@ def predict(req: PredictRequest):
                 module = dspy.Predict(sig)
             elif req.module_type == "ChainOfThought":
                 module = dspy.ChainOfThought(sig)
+            elif req.module_type == "ProgramOfThought":
+                module = dspy.ProgramOfThought(sig)
             else:
                 raise HTTPException(status_code=400, detail=f"Unknown module type: {req.module_type}")
         
@@ -155,26 +175,51 @@ def optimize(req: OptimizeRequest):
     
     # Define Metric
     if req.metric == "exact_match":
-        def metric_fn(example, pred, trace=None):
+        def optimize_metric_fn(example, pred, trace=None):
             return answer_exact_match(example, pred)
     else:
         # Default to simple equality of the last output field
         output_keys = [k for k, v in sig.fields.items() if v.json_schema_extra['__dspy_field_type'] == 'output']
         output_field = output_keys[-1]
-        def metric_fn(example, pred, trace=None):
+        def optimize_metric_fn(example, pred, trace=None):
             return getattr(example, output_field) == getattr(pred, output_field)
 
     try:
         # Optimizer
         if req.optimizer == "BootstrapFewShot":
-            optimizer = dspy.BootstrapFewShot(metric=metric_fn, max_bootstrapped_demos=req.max_bootstraps)
+            optimizer = dspy.BootstrapFewShot(metric=optimize_metric_fn, max_bootstrapped_demos=req.max_bootstraps)
+        elif req.optimizer == "MIPROv2":
+            optimizer = dspy.MIPROv2(
+                metric=optimize_metric_fn,
+                auto="light", # Use light mode by default for speed
+                num_threads=req.num_threads
+            )
+        elif req.optimizer == "COPRO":
+            optimizer = dspy.COPRO(
+                metric=optimize_metric_fn,
+                num_threads=req.num_threads,
+                breadth=req.num_candidates,
+                temperature=req.init_temperature
+            )
         else:
-            raise HTTPException(status_code=400, detail="Only BootstrapFewShot supported for now")
+            raise HTTPException(status_code=400, detail=f"Optimizer '{req.optimizer}' not supported")
         
         # Compile
         student = dspy.ChainOfThought(sig)
         
-        compiled_program = optimizer.compile(student, trainset=trainset)
+        if req.optimizer == "MIPROv2":
+             compiled_program = optimizer.compile(
+                 student, 
+                 trainset=trainset, 
+                 minibatch=req.minibatch,
+                 minibatch_size=req.minibatch_size,
+                 minibatch_full_eval_steps=req.minibatch_full_eval_steps,
+                 requires_permission_to_run=False
+             )
+        elif req.optimizer == "COPRO":
+             compiled_program = optimizer.compile(student, trainset=trainset, eval_kwargs={})
+        else:
+             compiled_program = optimizer.compile(student, trainset=trainset)
         
         # Store compiled program
         module_id = f"{req.signature_name}_opt_{len(compiled_modules)}"
@@ -182,6 +227,51 @@ def optimize(req: OptimizeRequest):
         
         return {"status": "optimized", "module_id": module_id}
         
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/evaluate")
+def evaluate(req: EvaluateRequest):
+    if req.signature_name not in signatures:
+        raise HTTPException(status_code=404, detail="Signature not found")
+    
+    sig = signatures[req.signature_name]
+    
+    # Prepare Data
+    input_keys = [k for k, v in sig.fields.items() if v.json_schema_extra['__dspy_field_type'] == 'input']
+    testset = [dspy.Example(**x).with_inputs(*input_keys) for x in req.test_data]
+    
+    # Define Metric
+    if req.metric == "exact_match":
+        def eval_metric_fn(example, pred, trace=None):
+            return answer_exact_match(example, pred)
+    else:
+        output_keys = [k for k, v in sig.fields.items() if v.json_schema_extra['__dspy_field_type'] == 'output']
+        output_field = output_keys[-1]
+        def eval_metric_fn(example, pred, trace=None):
+            return getattr(example, output_field) == getattr(pred, output_field)
+
+    # Get Module
+    if req.compiled_module_id:
+        if req.compiled_module_id not in compiled_modules:
+            raise HTTPException(status_code=404, detail="Compiled module not found")
+        module = compiled_modules[req.compiled_module_id]
+    else:
+        if req.module_type == "Predict":
+            module = dspy.Predict(sig)
+        elif req.module_type == "ChainOfThought":
+            module = dspy.ChainOfThought(sig)
+        elif req.module_type == "ProgramOfThought":
+            module = dspy.ProgramOfThought(sig)
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown module type: {req.module_type}")
+
+    try:
+        evaluator = dspy.Evaluate(devset=testset, metric=eval_metric_fn, num_threads=req.num_threads, display_progress=req.display_progress)
+        score = evaluator(module)
+        return {"status": "evaluated", "score": score}
     except Exception as e:
         import traceback
         traceback.print_exc()

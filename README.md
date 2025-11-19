@@ -7,8 +7,9 @@ A proxy server for [DSPy](https://github.com/stanfordnlp/dspy) that allows you t
 ## Features
 
 - **Register Signatures**: Define input/output signatures dynamically.
-- **Execute Modules**: Run `Predict` or `ChainOfThought` modules.
-- **Optimize**: Compile modules using `BootstrapFewShot` optimizer.
+- **Execute Modules**: Run `Predict`, `ChainOfThought`, or `ProgramOfThought` modules.
+- **Optimize**: Compile modules using `BootstrapFewShot`, `MIPROv2`, or `COPRO`.
+- **Evaluate**: Run evaluation on your modules using `dspy.Evaluate`.
 - **Configure LM**: Set up the Language Model (OpenAI supported).
 
 ## Installation
@@ -81,6 +82,7 @@ If `api_key` is omitted, the server will look for environment variables like `OP
   "module_type": "ChainOfThought"
 }
 ```
+Supported `module_type`: `Predict`, `ChainOfThought`, `ProgramOfThought`.
 
 ### 4. Optimize
 `POST /optimize`
@@ -96,6 +98,7 @@ If `api_key` is omitted, the server will look for environment variables like `OP
   "max_bootstraps": 4
 }
 ```
+Supported `optimizer`: `BootstrapFewShot`, `MIPROv2`, `COPRO`.
 Returns a `module_id`.
 
 ### 5. Predict with Optimized Module
@@ -109,3 +112,17 @@ Returns a `module_id`.
   "compiled_module_id": "qa_opt_0"
 }
 ```
+
+### 6. Evaluate
+`POST /evaluate`
+```json
+{
+  "signature_name": "qa",
+  "test_data": [
+    {"question": "What is 5+5?", "answer": "10"}
+  ],
+  "metric": "exact_match",
+  "compiled_module_id": "qa_opt_0"
+}
+```
+Returns a `score`.
