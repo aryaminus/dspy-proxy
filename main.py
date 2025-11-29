@@ -28,6 +28,8 @@ class ConfigureRequest(BaseModel):
     api_key: Optional[str] = None
     max_tokens: int = 1000
     temperature: float = 0.0
+    api_base: Optional[str] = None
+    api_version: Optional[str] = None
 
 class PredictRequest(BaseModel):
     signature_name: str
@@ -80,6 +82,18 @@ def configure_lm(req: ConfigureRequest):
         # Fallback for openai if provider is just 'openai'
         if not api_key and req.provider == "openai":
              api_key = os.environ.get("OPENAI_API_KEY")
+        
+        # Fallback for gemini
+        if not api_key and req.provider == "gemini":
+             api_key = os.environ.get("GOOGLE_API_KEY")
+
+        # Fallback for anthropic
+        if not api_key and req.provider == "anthropic":
+             api_key = os.environ.get("ANTHROPIC_API_KEY")
+
+        # Fallback for azure
+        if not api_key and req.provider == "azure":
+             api_key = os.environ.get("AZURE_API_KEY")
 
     if not api_key:
         raise HTTPException(status_code=400, detail=f"API key required for provider '{req.provider}'. Please provide it in the request or set {req.provider.upper()}_API_KEY environment variable.")
@@ -95,7 +109,16 @@ def configure_lm(req: ConfigureRequest):
              model_name = f"openai/{req.model}"
 
     try:
-        lm = dspy.LM(model=model_name, api_key=api_key, max_tokens=req.max_tokens, temperature=req.temperature)
+        # Determine API Base and Version (mainly for Azure)
+        api_base = req.api_base
+        if not api_base and req.provider == "azure":
+            api_base = os.environ.get("AZURE_API_BASE")
+            
+        api_version = req.api_version
+        if not api_version and req.provider == "azure":
+            api_version = os.environ.get("AZURE_API_VERSION")
+
+        lm = dspy.LM(model=model_name, api_key=api_key, max_tokens=req.max_tokens, temperature=req.temperature, api_base=api_base, api_version=api_version)
         dspy.settings.configure(lm=lm)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to configure LM: {str(e)}")
